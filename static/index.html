@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WalkieTalkie Scanner</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace;
+  background: #0d1117; color: #c9d1d9; padding: 16px; min-height: 100vh;
+}
+.container { max-width: 900px; margin: 0 auto; }
+h1 { font-size: 1.4rem; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+h1 .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+h1 .dot.on { background: #3fb950; box-shadow: 0 0 8px #3fb95088; }
+h1 .dot.off { background: #484f58; }
+h1 .dot.error { background: #f85149; box-shadow: 0 0 8px #f8514988; }
+.row { display: flex; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+.card {
+  background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+  padding: 14px; flex: 1; min-width: 200px;
+}
+.card h2 { font-size: 0.8rem; text-transform: uppercase; color: #8b949e; margin-bottom: 6px; letter-spacing: 0.5px; }
+.card .value { font-size: 1.3rem; font-weight: 600; }
+.card .value small { font-size: 0.8rem; font-weight: 400; color: #8b949e; }
+.signal-meter {
+  height: 20px; background: #0d1117; border-radius: 4px; overflow: hidden;
+  margin-top: 6px; border: 1px solid #30363d;
+}
+.signal-meter .fill {
+  height: 100%; transition: width 0.3s ease, background 0.3s ease;
+  border-radius: 3px;
+}
+.signal-meter .fill.low { background: #58a6ff; }
+.signal-meter .fill.mid { background: #d29922; }
+.signal-meter .fill.high { background: #f85149; }
+.signal-meter .fill.rec { background: #3fb950; }
+.channel-grid {
+  display: grid; grid-template-columns: repeat(11, 1fr); gap: 4px;
+}
+.channel-btn {
+  padding: 6px 2px; text-align: center; border: 1px solid #30363d;
+  border-radius: 4px; cursor: pointer; font-size: 0.75rem;
+  background: #0d1117; color: #c9d1d9; transition: all 0.15s;
+  position: relative;
+}
+.channel-btn:hover { border-color: #58a6ff; }
+.channel-btn.active { border-color: #3fb950; background: #1b2d1b; }
+.channel-btn.locked { border-color: #d29922; background: #2d2413; }
+.channel-btn .bar {
+  height: 3px; border-radius: 2px; margin-top: 3px; transition: width 0.5s;
+  background: #484f58;
+}
+.channel-btn .bar.sig { background: #58a6ff; }
+.ch-btn-num { font-size: 0.65rem; color: #8b949e; }
+.mode-btns { display: flex; gap: 6px; margin: 8px 0; }
+.mode-btn {
+  padding: 6px 16px; border: 1px solid #30363d; border-radius: 6px;
+  cursor: pointer; font-size: 0.85rem; background: #0d1117; color: #c9d1d9;
+  transition: all 0.15s;
+}
+.mode-btn:hover { border-color: #58a6ff; }
+.mode-btn.active { border-color: #3fb950; background: #1b2d1b; }
+.transcript-list { list-style: none; }
+.transcript-list li {
+  padding: 6px 0; border-bottom: 1px solid #21262d; font-size: 0.85rem;
+}
+.transcript-list li .meta { color: #8b949e; font-size: 0.75rem; }
+.error-badge {
+  background: #f8514922; border: 1px solid #f85149; border-radius: 4px;
+  padding: 4px 8px; font-size: 0.8rem; color: #f85149; margin-top: 4px;
+}
+.hidden { display: none; }
+.config-row { display: flex; gap: 12px; margin: 8px 0; align-items: center; flex-wrap: wrap; }
+.config-row label { font-size: 0.8rem; color: #8b949e; }
+.config-row input, .config-row select {
+  background: #0d1117; border: 1px solid #30363d; border-radius: 4px;
+  color: #c9d1d9; padding: 4px 8px; font-size: 0.85rem;
+}
+@media (max-width: 600px) {
+  .channel-grid { grid-template-columns: repeat(7, 1fr); }
+  .card { min-width: 140px; }
+}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>
+  <span class="dot" id="statusDot"></span>
+  WalkieTalkie FRS Scanner
+  <span id="errorBadge" class="error-badge hidden"></span>
+</h1>
+
+<div class="row">
+  <div class="card">
+    <h2>Status</h2>
+    <div class="value" id="statusMode">--</div>
+  </div>
+  <div class="card">
+    <h2>Channel</h2>
+    <div class="value" id="statusChannel">-- <small>MHz</small></div>
+  </div>
+  <div class="card">
+    <h2>Signal</h2>
+    <div class="value" id="statusSignal">-- <small>dB</small></div>
+    <div class="signal-meter"><div class="fill low" id="signalFill" style="width:0%"></div></div>
+  </div>
+  <div class="card">
+    <h2>Recording</h2>
+    <div class="value" id="statusRecording">--</div>
+  </div>
+  <div class="card">
+    <h2>Uptime</h2>
+    <div class="value" id="statusUptime">--</div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Channels</h2>
+  <div class="mode-btns">
+    <button class="mode-btn" data-mode="auto">Auto</button>
+    <button class="mode-btn" data-mode="monitor">Monitor</button>
+    <button class="mode-btn" data-mode="idle">Idle</button>
+    <button class="mode-btn" id="scanBtn">Scan Now</button>
+  </div>
+  <div class="channel-grid" id="channelGrid"></div>
+</div>
+
+<div class="config-row">
+  <label>Squelch: <input type="number" id="squelchInput" value="30" min="0" max="150" style="width:60px"></label>
+  <label>VOX: <input type="number" id="voxInput" value="0.02" min="0.001" max="0.5" step="0.001" style="width:70px"></label>
+  <button class="mode-btn" id="applyConfigBtn" style="padding:4px 12px">Apply</button>
+</div>
+
+<div class="card">
+  <h2>Last Transcript</h2>
+  <div id="lastTranscript" style="font-size:0.95rem;min-height:1.5em;color:#7ee787">--</div>
+</div>
+
+<div class="card">
+  <h2>Recent Transcripts</h2>
+  <ul class="transcript-list" id="transcriptList">
+    <li style="color:#484f58">Waiting...</li>
+  </ul>
+</div>
+</div>
+
+<script>
+const CHANNELS = [
+  {ch:1,f:462.5625},{ch:2,f:462.5875},{ch:3,f:462.6125},{ch:4,f:462.6375},{ch:5,f:462.6625},{ch:6,f:462.6875},{ch:7,f:462.7125},
+  {ch:8,f:467.5625},{ch:9,f:467.5875},{ch:10,f:467.6125},{ch:11,f:467.6375},{ch:12,f:467.6625},{ch:13,f:467.6875},{ch:14,f:467.7125},
+  {ch:15,f:462.5500},{ch:16,f:462.5750},{ch:17,f:462.6000},{ch:18,f:462.6250},{ch:19,f:462.6500},{ch:20,f:462.6750},{ch:21,f:462.7000},{ch:22,f:462.7250}
+];
+
+let currentMode = 'auto';
+let currentChannel = 0;
+
+function api(path, opts) {
+  return fetch(path, opts).then(r => r.ok ? r.json() : Promise.reject(r.status));
+}
+
+function renderChannelGrid(channels) {
+  const grid = document.getElementById('channelGrid');
+  grid.innerHTML = '';
+  CHANNELS.forEach((ch, i) => {
+    const btn = document.createElement('div');
+    btn.className = 'channel-btn';
+    if (channels && channels[i]) {
+      const db = channels[i].db;
+      const pct = Math.min(100, Math.max(0, (db + 100) * 1.2));
+      btn.innerHTML = `<div>${ch.ch}</div><div class="bar${pct > 5 ? ' sig' : ''}" style="width:${pct}%"></div>`;
+    } else {
+      btn.innerHTML = `<div>${ch.ch}</div><div class="bar" style="width:0%"></div>`;
+    }
+    if (ch.ch === currentChannel) btn.classList.add('active');
+    btn.onclick = () => lockChannel(ch.ch);
+    grid.appendChild(btn);
+  });
+}
+
+function lockChannel(ch) {
+  api(`/api/lock/${ch}`, {method:'POST'}).then(() => {
+    currentChannel = ch;
+    renderChannelGrid();
+  });
+}
+
+function pollStatus() {
+  api('/api/status').then(data => {
+    const dot = document.getElementById('statusDot');
+    if (data.error) { dot.className = 'dot error'; } else if (data.recording) { dot.className = 'dot on'; } else { dot.className = 'dot'; }
+
+    document.getElementById('statusMode').textContent = data.mode.toUpperCase();
+    const chText = data.channel ? `CH ${data.channel} (${data.frequency.toFixed(4)} MHz)` : '--';
+    document.getElementById('statusChannel').innerHTML = chText;
+    document.getElementById('statusSignal').innerHTML = `${data.signal_db.toFixed(1)} <small>dB</small>`;
+    document.getElementById('statusRecording').textContent = data.recording ? `● ${data.recording_duration.toFixed(1)}s` : '--';
+    document.getElementById('statusUptime').textContent = formatUptime(data.uptime);
+
+    const pct = Math.min(100, Math.max(0, (data.signal_db + 100) * 1.2));
+    const fill = document.getElementById('signalFill');
+    fill.style.width = pct + '%';
+    fill.className = 'fill' + (data.recording ? ' rec' : (pct > 60 ? ' high' : pct > 20 ? ' mid' : ' low'));
+
+    currentMode = data.mode;
+    currentChannel = data.channel;
+    document.querySelectorAll('.mode-btn[data-mode]').forEach(b => {
+      b.classList.toggle('active', b.dataset.mode === data.mode);
+    });
+
+    document.getElementById('squelchInput').value = data.squelch;
+    document.getElementById('voxInput').value = data.vox_threshold;
+
+    const errEl = document.getElementById('errorBadge');
+    if (data.error) {
+      errEl.textContent = data.error;
+      errEl.classList.remove('hidden');
+    } else {
+      errEl.classList.add('hidden');
+    }
+
+    if (data.last_transcript && data.last_transcript !== '(silence)') {
+      document.getElementById('lastTranscript').textContent =
+        `[${data.last_transcript_time}] CH${data.last_transcript_channel}: ${data.last_transcript}`;
+    }
+  });
+}
+
+function pollChannels() {
+  api('/api/channels').then(data => {
+    if (data.channels) renderChannelGrid(data.channels);
+  });
+}
+
+function pollTranscripts() {
+  api('/api/transcripts?limit=10').then(data => {
+    const list = document.getElementById('transcriptList');
+    if (!data.transcripts || data.transcripts.length === 0) {
+      list.innerHTML = '<li style="color:#484f58">No transcripts yet</li>';
+      return;
+    }
+    list.innerHTML = data.transcripts.map(t =>
+      `<li><span class="meta">${t.time} CH${t.channel}</span> ${escapeHtml(t.text)}</li>`
+    ).join('');
+  });
+}
+
+function formatUptime(s) {
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = Math.floor(s % 60);
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m ${sec}s`;
+}
+
+function escapeHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+document.querySelectorAll('.mode-btn[data-mode]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    api('/api/mode', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({mode: btn.dataset.mode})});
+  });
+});
+
+document.getElementById('scanBtn').addEventListener('click', () => {
+  api('/api/scan', {method:'POST'});
+});
+
+document.getElementById('applyConfigBtn').addEventListener('click', () => {
+  const squelch = parseInt(document.getElementById('squelchInput').value) || 30;
+  const vox = parseFloat(document.getElementById('voxInput').value) || 0.02;
+  api('/api/config', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({squelch, vox_threshold: vox})});
+});
+
+renderChannelGrid();
+pollStatus();
+pollChannels();
+pollTranscripts();
+setInterval(pollStatus, 1500);
+setInterval(pollChannels, 3000);
+setInterval(pollTranscripts, 3000);
+</script>
+</body>
+</html>

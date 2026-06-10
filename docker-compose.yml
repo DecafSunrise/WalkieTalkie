@@ -1,0 +1,20 @@
+volumes:
+  frs_recordings:
+  frs_transcripts:
+
+services:
+  frs-scanner:
+    build: .
+    container_name: frs-scanner
+    devices:
+      - /dev/bus/usb:/dev/bus/usb
+    volumes:
+      - frs_recordings:/recordings
+      - frs_transcripts:/transcripts
+    ports:
+      - "8080:8000"
+    environment:
+      - WHISPER_MODEL=base.en
+    restart: unless-stopped
+    stdin_open: true
+    tty: true
